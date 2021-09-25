@@ -1,0 +1,452 @@
+---
+title: "HappyR"
+by: James Bui, Shiyu (Nina) Chen, Rini Perencsik
+output:
+  html_document:
+    code_folding: hide
+---
+
+Research Questions and Extra research Question 
+===================================
+Our goal is to determine and analyze the factors that make us happy. More importantly, we wish to learn why these factors are happiness inducing. And we also want to figure out if there is any region differences when percepting happiness.
+In this project, we look at economic, political, educational and health factors of happiness. 
+
+We turned to outside research to contextualize the intricate correlations that we discovered. We noticed that there were some grey areas with confounding variables indicating a reverse explanatory relationship between happiness and a given factor. As such, we wanted to further investigate the question, "When is happiness in fact an explanatory variable?"
+
+```{r global_options, include=FALSE}
+knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+#install.packages("Rmisc")
+#install.packages("plyr")
+library(tidyverse)
+library(modelr)
+library("Rmisc")
+library("plyr")
+library(knitr)
+```
+*Prepareing and checking Data sets we need*
+
+```{r}
+healthexp <- read_tsv("HEALTHEXP.csv")
+birthrate <- read_tsv("BIRTHRATE.csv")
+democracyindex <- read_tsv("DEMOCRACYINDEX.csv")
+gdppp <- read_tsv("GDPPP.csv")
+gini <- read_tsv("GINI.csv")
+internetuser <- read_tsv("INTERNET.csv")
+schooling <- read_tsv("SCHOOLINGEXPECTANCY.csv")
+population <- read_tsv("POPULATION.csv")
+happinessscore <- read_tsv("WorldHappinessReport2018-Score.csv")
+regionclassification <- read_tsv("WorldRegions.csv")
+kable(count(regionclassification$Region),caption = "Count for Regions")
+regionclassification$Region[regionclassification$Region == "Asic & Pacific"] <- "Asia & Pacific"
+regionclassification <- filter(regionclassification,Region != "Unknown")
+```
+
+Before using the data set of region, we need to check if there is any error exist.
+by drawing a bar chart of regions, it is clear to see that there is a typing error - "Asic & Pacific" which should be "Asia & Pacfic" that need to correct. and we aslo removed 8 rows that with unknown region.
+
+Economic and Political Factor:
+-------------------------------------------------------------------------------
+
+```{r}
+democracyindex
+all <- inner_join(gini, gdppp, by = "Country")
+all <- inner_join(all, democracyindex, by = "Country")
+all <- inner_join(all, happinessscore, by = "Country")
+all <- all%>%
+  select(-c(Rank.y, `Date of Information.y`, `Date of Information.x`, Rank, Rank.x))
+all$`GDP - PER CAPITA (PPP)` <- str_sub(all$`GDP - PER CAPITA (PPP)`, start = 2, end = length(all$`GDP - PER CAPITA (PPP)`))
+all$`GDP - PER CAPITA (PPP)` <- str_remove(all$`GDP - PER CAPITA (PPP)`, ",")
+all <- all%>%transform(GDPPC = as.integer(all$`GDP - PER CAPITA (PPP)`))%>%select(-c(GDP...PER.CAPITA..PPP.))
+#Use summary to determine 1- 4 quartile used as increments in new GDP Level, GINI Level, Political Participation LEvel
+summary(all$GDPPC)
+all[, "GDP Level"] <- cut(all$GDPPC, breaks = c(1, 4900, 13300, 29500, 124500), labels = c("Level 4", "Level 3", "Level 2", "Level 1"))
+summary(all$Distribution.of.family.income...Gini.index)
+all[, "GINI Level"] <- cut(all$Distribution.of.family.income...Gini.index, breaks = c(1, 32.05, 37.90, 44.50, 63.20), labels = c("Level 4", "Level 3", "Level 2", "Level 1"))
+summary(all$Political.participation)
+all[, "GDP Separation"] <- cut(all$GDPPC, breaks = c(1,10000, 75000), labels = c( "Level 2", "Level 1"))
+all[, "Political Participation Level"] <- cut(all$Political.participation, breaks = c(1, 4.44, 5.56, 6.67, 10), labels = c("Level 4", "Level 3", "Level 2", "Level 1"))
+#kable(all[1:3,],caption = "Economic and Political")
+```
+
+ **Economic and Political Variables: **
+
+ * Data sets we used : gini, gdppp, democracyindex 
+   + gini -  gives us information on income inequality distribution of each country
+   + gdppp - gives us information on GDP per capita of each country
+   + democracyindex - gives us political information on a country, such as civil liberties and other
+democractic factors
+ * Number of Observations: 131
+ * Quantitative Variables:
+   + Happiness.score: happiness score 2018
+   + Income Distribution: income inequality distribution
+   + Score: democracy score given to a country
+   + Political participation: political participation score given to a country
+   + Civil liberties: civil liberties score given to a country
+   + GDPPC: GDP per Capita
+ * Qualitative Variables:
+   + Country
+   + Continent
+   + Regime type: type of regime (Full democracy, flawed democracy, hybrid regime, authouritarian)
+   + GDP Separation: level assigned to country based on GDP per capita (Level 1-2)
+   + GDP Level: level assigned to country based on GDP per capita (Levels 1-4)
+   + GINI Level: level assigned to country based on income inequality distribution
+
+ > Relationship between GDP Per Capita and Happiness
+
+```{r}
+all[, "GDP Separation"] <- cut(all$GDPPC, breaks = c(1,10000, 75000), labels = c( "Level 2", "Level 1"))
+all$Continent <- as.factor(all$Continent)
+ggplot(filter(all, GDPPC < 75000), mapping = aes(GDPPC, Happiness.score))+geom_point()+geom_smooth()+labs(title = paste( "Happiness generally increseases with higher GDP per capita"))
+```
+
+This graph shows that GDP per capita is the accepted measure of a country's standard of living. The first graph shows the relationship between GDP per capita and happiness. It is clear that there is a strong positive relationship between GDPPC and a country's happiness score. The higher a country's standard of living, the happier its citizens appear to be.
+
+```{r}
+#this grpah separates the countries with GDPPC under 10000 by color
+ggplot(filter(all, GDPPC < 75000), mapping = aes(GDPPC, Happiness.score))+
+  geom_point(mapping = aes(color = `GDP Separation`))+
+  geom_smooth(mapping = aes(color = `GDP Separation`))+labs(title = paste("Highlighting the change in slope's rate of change"))
+```
+ 
+Interestingly, when you separate the countries with a GDP per capita under 10,000 ("Level 2"- red), you can see that the slope's rate of change is dramatically higher. This indicates that within that range, the higher the country's GDPPC, the larger effect it has on happiness. Then, the slope's rate of change decreases as you move onto Level 1 countries (blue). This change in slope suggests something interesting about the relationship  between happiness and standard of living. Research reveals that where the slope changes veolcity is the approximate threshold needed to sustain survival. GDP per capita influences happiness greatly until basic needs are afforded, such as food, water and shelter. In other words, wealth is not a crucial determinant of happiness once fundamental needs have been met (Barker, 2011).
+
+```{r}
+ggplot(all)+geom_point(mapping=aes(all$Distribution.of.family.income...Gini.index, all$Happiness.score))+labs(title = paste( "Happiness generally decreases as income inequality increases"))
+cor(all$Distribution.of.family.income...Gini.index, all$Happiness.score)
+```
+
+So far, we have found convincing statistics that there are physical determinants of happiness (wealth) when comparing GDP per capita to a country's happiness score. However, when we add income distribution inequality into the equation, we are given indicators that there are also psychological determinants of happiness. Although, this psychological link does not immediately reveal itself with a simple Income Distribution vs Happiness score.
+
+Here, we see a relatively weak negative relationship (r = -.306) between level of income inequality and the happiness score of a country. Meaning, the more income inequality in a country, the less happy the citizens appear to be.  As such, we are inclined to think that there is in fact a relationship, although very weak, between the two variables. However, we must take into account GDP per capita as a confounding variable; it could just be that the countries scoring higher happiness levels are actually just wealthier nations.
+ 
+```{r}
+ggplot(all)+geom_point(mapping=aes(GDPPC, Happiness.score, color = `GINI Level`))+facet_wrap(~`GINI Level`)
+```
+
+The Graph above: In this plot of GDP per capita vs Happiness levels, we take income distribution levels into account:
+ 
+Level 1 = countries in the  highest 25% of income distribution inequality (high levels)
+ 
+Level 4 = countries in the lowest 25% of income distribution inequality (low levels) 
+ 
+We see that when income distribution inequality is low (i.e., people have similar amounts of money),  standard of living (GDP per capita) is a better prediction of a country's happiness. In level 4, we see the strongest correlation with each subsequent level demonstrating a weaker relationship between GDP per capita and happiness. In other words, GDP per capita has a strong positive relationship with happiness until the country's income distribution starts negatively affecting the country. High income inequality generally comes with feelings of public distrust which are causes for stress, anxiety, and reduced feelings of safety, security and well-being (Florida, 2015). Meaning, one's psychological state and view of their country affects their happiness.
+
+ > Happiness on a global level
+
+```{r}
+g1 <- ggplot(all)+
+  geom_boxplot(mapping=aes(x = Continent, y= Happiness.score))
+g2 <- ggplot(all) + geom_point(aes(Civil.liberties, Happiness.score, color = all$Regime.type))+facet_wrap(~Continent)
+cor(all$Civil.liberties, all$Happiness.score)
+g1
+g2
+```
+
+The First graph: The average happiness score in each continent from least to greatest is Africa, Asia, South America, Europe, North America, and Oceania. Lets try to see if political and economic factors influence the average score of each continent. 
+Which continents are the most democratic?
+
+The second graph: With a correlation coefficient of r = 0.596, we generally see a positive relationship between civil liberties score and happiness score of each country. Europe and the western world are known for having high civil liberties integrated in their societies. Correspondingly, Europe, North America and South America see the strongest relationship between the two variables. A high score of civil liberties is indicative of individual protection from the strong force of government. Individuals free from the constraints of government are generally happier because they are able to pursue and their personal views without fear of being condemned. This in turn reduces the liklihood of injustices, oppression and public contempt. Ultimately, free people are happy people. Another interesting factor this graph demonstrates is the relationship between regime type and happiness. We see that full democracies consistently score on the higher send of the happiness scale, followed by flawed democracies, hybrid regimes and authoritarian governments. As such, we would like to further investigate the relationship between democracy and happiness. 
+ 
+ > Does Democracy affect happiness?
+
+```{r}
+g1 <- ggplot(all)+
+  geom_point(mapping=aes(x = Score, y = Happiness.score, color = all$`GDP Level`))+geom_smooth(mapping=aes(x = Score, y = Happiness.score))
+g2 <- ggplot(all)+geom_point(mapping=aes(x = Score, y = GDPPC))+geom_smooth(mapping=aes(x = Score, y = GDPPC))
+summary(all$Happiness.score)
+multiplot(g1,g2, cols=2)
+```
+
+First graph: At first, we see that there is a positive relationship between Democracy score and happiness score. However, when we pay attention to the color of each point, we notice that there seems to be clusters with purple points (Level 1: wealthier countries) generally being at the positive end and red points (Level 4: poorest countries) being in the negative end. As such, we want to check GDP per capita as a confounding variable.
+ 
+Second graph:  This graph here invalidates our original hypothesis that democracy promotes happiness. We are confronted with a confounding variable: GDP per capita. The more democratic a country is, the higher standard of living the country has, which we already deemed a determinant. Democracy and GDP per capita are not independent variables. As a result, we must turn to outside research to give us a more wholesome view of the realtionship between democracy and happiness.
+
+ > Happiness affects democracy?
+
+More studies have controlled GDP per capita as a confounding variable and have still found that democracy does in fact relate to our happiness, although not as greatly as we may think. Moldova has a relatively low happiness rating of 5.6 and is considered one of the least happy nations on the planet (Weiner, 2009). Moldova used to be under the control of the Soviet Union but eventually adopted a more democratic form of government. Based on the graphs, we would expect Moldova to see an increase in happiness with the advent of democracy. Although the country did see an increase in happiness, it was short lived and eventually declined over time.  This shift in happiness level weakens democracy as the explanatory variable and reveals that happiness level adjusts to new circumstances, something deeper and more psychological must occur in order to truly bring up a nation's happiness. After analyzing the data and doing outside research, we learn that happiness is determined more by a person's psychological state than their political circumstances. In fact, further research suggests that there actually is a relationship between happiness and democracy. Interestingly, there is stronger evidence that democracy is not the explanatory variable, rather happiness. Happiness influences democracy, not the other way around. 
+
+ > Relationship between political participation and happiness##
+
+```{r}
+ggplot(all)+geom_point(mapping = aes(x = all$Political.participation, y = Happiness.score), position = "jitter")+geom_smooth(mapping = aes(x = all$Political.participation, y = Happiness.score))
+```
+
+We initially hypothesized that there is a positive relationship between political participation and happiness. We hypothesized that if citizens voiced their political beliefs, the likelihood of repression, injustice and exploitation will decrease. After analyzing the graph, we can see that our hypothesis is plausible, demonstrated by the indeed upward slope. However, outside research tells us that there is also a reverse correlation: happier individuals tend to participate in politics more. More than participation influencing happiness, happiness influences participation. And, if citizens are happy with their government and have high political efficacy, meaning they believe their voice will be heard, they are more likely to vote. Once again, we are given yet another instance where one's perception of their enviornment and politics perpetuates their happiness.
+ 
+
+-------------------------------------------------------------------------------
+
+
+Education Factor:
+-------------------------------------------------------------------------------
+
+> Relationship between Total schooling life expectancy and GINI index
+
+```{r edu}
+Edu <- inner_join(happinessscore,schooling,by = "Country")
+Edu <- inner_join(Edu,regionclassification, by = "Country")
+Edu <- select(Edu,c("Country","Happiness score","total","Region"))
+kable(Edu[1:2,],caption = "Edu")
+```
+
+ **Edu Variables:**
+
+ * Data sets we used: 1. happiness score 2. schooling 3. regionclassification
+   + happiness score: happiness score measured on 2018
+   + schooling: gives us the number of total, female, and male schooling life expectancy
+   + regionclassification: classificate which countries in which regions
+ * Number of Observations: 123 (the table above only show the first 2 rows)
+ * Quantitative Variables:
+   + Happiness score: happiness score 2018
+   + Total: total years of school life expectancy
+ * Qualitative Variables:
+   + Country
+   + Region: the region that contry belongs to 
+ 
+ 
+```{r}
+edu_mod <- lm(Edu$`Happiness score`~Edu$total,data = Edu)
+summary(edu_mod)
+"correaltion between happyiness and total education life expectancy:"
+cor(Edu$total,Edu$`Happiness score`)
+```
+
+We used the statistical method to see if there is a correlation between preditor (total schooling expectancy) and outcome (happiness score).
+
+Set:
+Null hypothesis (H0): there is no relationship between these two variables.
+
+Alternative Hypothesis (Ha): there is a relation.
+
+Based on statistics, the higher the t-statistic (and the lower the p-value), the more significant the predictor. Additionally, a significant level can be seen from the stars beside the variable’s p-value. The more the stars, the more significant the variable.
+As we can observe from the summary of our linear model, both the p-values for the intercept and the predictor variable (total schooling expectancy) are highly significant, so we can reject the null hypothesis and accept the alternative hypothesis, which means that there is a significant association between education and the happiness.
+
+And, that can also be proved by calculating the correlation of years of schooling expectancy(total) and happiness. The number 0.7340706 indicates it is a strong positive correlation.
+
+The estimated regression line equation is: $happiness score = 1.84*total schooling life expectancy + 0.27$
+
+Then, we visualized our model to see this association.
+
+```{r}
+pred.int <- predict(edu_mod, interval = "prediction")
+Edu <- cbind(Edu,pred.int)
+g1 <- ggplot(data=Edu,aes(Edu$total)) + geom_point(aes(y = Edu$`Happiness score`)) + 
+  stat_smooth(aes(y = Edu$`Happiness score`), method = "lm") + 
+  geom_line(aes(y = lwr), color = "red", linetype = "dashed")+
+    geom_line(aes(y = upr), color = "red", linetype = "dashed")+
+  labs(x="total shcooling life expectancy",y="Happiness_Score")
+g2 <- ggplot(data=Edu,aes(Edu$total)) + 
+  geom_point(aes(y = edu_mod$residuals)) +
+  labs(y="Residuals",x= "total shcooling life expectancy") 
+multiplot(g1,g2, cols=2)
+```
+
+Here we look at the regression lines and prediction interval at the graphs, as long as total schooling life expectancy increases, the happiness score increases as well. There is a positive relation between these two variables.
+
+Last but not least, we plotted residuals to see if there was any missed pattern, and we were pleased that all points seemed to be randomized plotted, which means that our linear model is suitable.
+
+This makes sense because Education can help individuals develop basic cognitive functioning and think logically, critically analyze data, solve problems, and implement plans. The aim of education is to help students find self-fulfillment and reach their potential. Longer and Higher education is the key to attainable and well-paid jobs, which contribute to higher life liberty which leads to happiness, even contributing to the creation of more social and economical values (Luy, et al., 2019).
+
+> Relationship between Total schooling life expectancy and GINI index
+
+```{r}
+ggplot(data=Edu,aes(Edu$total)) + geom_point(aes(y = Edu$`Happiness score`)) +facet_wrap(~Edu$Region)+labs(x="total shcooling life expectancy",y="Happiness_Score")
+```
+ 
+In terms of region difference, as we can see from the graph above, the education factor shows much stronger power in Europe, Arab States, and Asia & Pacific, while people in Africa and South/Latin American valued less important of education in happiness.
+
+To interpret that, we need to connect it to economical factor.
+
+> Relationship between Total schooling life expectancy and GINI index
+
+```{r}
+econ <- inner_join(regionclassification,gini, by = "Country")
+econ <- select(econ,c("Country","Region","Distribution of family income - Gini index"))
+kable(econ[1:2,],caption = "econ")
+```
+
+ **econ variables:**
+ 
+ * Data sets we used: 1. gini 2. regionclassification 
+   + gini -  gives us information on income inequality distribution of each country
+   + regionclassification - classificate which countries in which regions
+ * Number of Observations: 136 (the table above only show the first 2 rows)
+ * Quantitative Variables:
+   + Distribution of family income - Gini index: GINI index shows income inequality. The higher the score, the larger income inequality in that country
+ * Qualitative Variables:
+   + Country
+   + Region
+
+```{r}
+ggplot(econ) + geom_boxplot(aes(econ$Region,econ$`Distribution of family income - Gini index`)) + labs(x= "Region",y= "GINI Index")
+```
+
+By creating a boxplot we can clearly see that South/Latin America and Africa were the first and second regions to get the highest region mean Gini index, which means that people in these two regions are suffering from the strongest income inequality compared within other regions. since income inequality causes poverty, starvation and Mental imbalance, this strongly influences how people percept happiness. in that kind of situation, people might place more value on other needs like equal income, safety, food and less on education, when measuring happiness index.
+
+For those in other regions with a relatively low Gini index, individuals feel less of a mental imbalance, and find education to be more meaningful in their lives, so they rank education higher when considering happiness. For example, Europe had the lowest mean Gini index and most European countries also have a longer schooling life expectancy and higher happiness scores. 
+
+-------------------------------------------------------------------------------
+
+Technology Factor:
+-------------------------------------------------------------------------------
+"Fully 90 percent of people say the Internet has been a good thing for them personally (Schupak, 2015)." 
+
+ > Does Internet make people happier?
+
+```{r}
+Tech <- inner_join(happinessscore,internetuser,by = "Country")
+Tech <- inner_join(Tech,regionclassification,by = "Country")
+Tech <- inner_join(Tech,population,by = "Country")
+Tech <- inner_join(Tech,gdppp,by = "Country")
+Tech <- mutate(Tech,internet_per=(Tech$`Internet users`/Tech$Population)*100,GDP_Rank = Tech$Rank)
+Tech <- select(Tech,c("Country","Happiness score", "Region","internet_per","GDP_Rank"))
+kable(Tech[1:2,],caption = "Joind data Set - Tech")
+```
+
+ **Tech variables:**
+
+ * Data Set we used: 1. happiness score 2. internetuser 3. regionclassification 4.population
+   +  happiness score: happiness score in 2018
+   +  internetuser: gives us the information about how many people use internet in each countries
+   +  regionclassificatiom: classificate which countries in which regions
+   +  population: gives us the information about the population in each countries
+ * Number of Observations: 136 (the table above only show the first 2 rows)
+ * Quantitative Variables:
+    + Happiness score: happiness score 2018
+    + internet_per : the percentage of people out of the entire population of a country that uses the internet
+    + GDP_Rank: the rank of gpd per captial
+ * Qualitative Variables:
+    + Country
+    + Region: Geological landscape.
+
+```{r}
+g1 <- ggplot(Tech)+geom_point(aes(x=Tech$internet_per,y=Tech$`Happiness score`)) +labs(y="Happiness_Score") + facet_wrap(~Tech$Region)
+g2 <- ggplot(Tech)+geom_smooth(aes(x=Tech$internet_per,y=Tech$GDP_Rank)) + labs(y= "GDP Rank")
+multiplot(g1,g2, cols=2)
+```
+
+To research the relation between happiness and technology from perspectives of the internet, we join happiness scores, internet users and population. Due to different populations in countries, we mutate a new variable named "internet_per" to show the percentage of internet users in each country. 
+
+By creating a point chart, there is a clear trend that the countries with a higher percentage in internet users also have higher happiness scores no matter the regions; esentially, it is in every part of the world.
+Many researchers have found that the internet not only increases the sense of competence and social connection but also brings opportunities and resources within reach. What's more, being online lets people have the ability to receive social validation, observe social and cultural norms and practice social behaviors, as well as participate in national discussions on social platforms. And, all these things satisfied people's needs of having a social connection and increases utility ("Why being online makes us happier – and why it doesn't").
+
+Beyond that, by looking at the second graph, we can see that the country with a larger percentage of internet users also tends to have a higher rank on GDP per capita, and as we discussed before, high GDP per capital also related to higher happiness score.
+
+-------------------------------------------------------------------------------
+
+Health Factor:
+-------------------------------------------------------------------------------
+
+ > Relationship between Happiness and Birthrate
+ 
+```{r}
+TIDY_Birthrate <- birthrate %>%
+  mutate(`Date of Information (Year)` = parse_number(birthrate$`Date of Information`))%>%
+  mutate(`Births/1,000 Population` = birthrate$`(births/1,000 population)`)%>%
+  filter(`Date of Information (Year)` > 2015)%>%
+  select(-c(`(births/1,000 population)`,`Date of Information`))
+
+kable(TIDY_Birthrate[1:2,],caption = "Brithrate per Country - TIDY_Birthrate")
+```
+
+ **TIDY_Birthrate variables**
+ 
+ * Data sets we used: birthrate
+   + birthrate: gives us the number of country birthrate per 1000 people of population
+ * Observations:  225 (the table above only show the first 2 rows)
+ * Quantitative Variables:
+   + Births/1,000 Population: Births per thousand people in the population
+   + Date of Information (Year)
+ * Qualitative Variables: 
+   + Country
+
+we mutated the Date of Information column to parse Date of Information as a numeric piece of data. We then renamed the Birthrate column to a  more appropriate label. Then, we filtered out outdated data so that it would only include current entries within 3 years of collection and then selected the appropriate columns for further analysis.
+
+```{r}
+summary(TIDY_Birthrate$`Births/1,000 Population`)
+```
+
+This summary chart indicates that the birthrate data is right skewed. The majority of birthrates fall between 11.60 to 23.50 with an overall median of 15.90.
+
+```{r}
+Tidy_Health <- inner_join(TIDY_Birthrate,regionclassification, by='Country')
+Tidy_Health <- inner_join(Tidy_Health, happinessscore, by='Country')
+Tidy_Health <- select(Tidy_Health, c('Country','Region', 'Happiness score', 'Births/1,000 Population'))
+kable(Tidy_Health[1:2,],caption = "birthrate by region - Tidy_Health")
+```
+
+ **Tidy_Health variables**
+
+ * Data sets we used: Tidy_Birthrate, regionclassification, happinessscore
+    + happiness score: happiness score measured on 2018
+    + Tidy_Birthrate: gives us the number of births per 1000 per country 
+    + regionclassification: classificate which countries in which regions
+ * Observations: 138 (the table above only show the first 2 rows)
+ * Quantitative Variables: 
+    + Date of information (Year) - Date of information Collected
+    + Births/1,000 Population - # of births per thousand people in population
+    + Rank - Rank of Country from greatest to lowest birth rate 
+ * Qualitative Variables:
+    + Country
+    + Region
+
+```{r}
+#Birthrate Box Plot by Region
+ggplot(Tidy_Health)+geom_boxplot(aes(Tidy_Health$Region,Tidy_Health$`Births/1,000 Population`))+labs(y = 'BIRTHRATE', x = 'REGION')
+```
+
+This boxplot further illustrates the distribution of birthrates among all regions. Europe and North America have birthrate medians of approximately, 10 and 12 – roughly around the 1st quartile. While Africa has a median of 35 which is above the 3rd quartile. There is a vast difference of roughly 25 births between these two regions! Other regions like Arab States, Asia Pacific, and Latin America have medians of roughly 28, 17 & 17 respectively. This difference is likely attributed to the income inequality, lack of education and higher death rates. For example, in continents, such as Africa, families rely on child labor as a source of income and so females are encouraged to have children.
+
+```{r}
+Birthrate_vs_Happiness <- ggplot(Tidy_Health, mapping=aes(x=`Births/1,000 Population`,y=`Happiness score`))+ geom_point() + geom_smooth()
+Birthrate_vs_Happiness
+
+```
+
+The  graph visualizes an overall a positive correlation between birthrates and happiness until 5-13 births per 1000 population. From 13 births per thousand onwards, there is a negative correlation. With rates less than 13, the human population can sustain itself as a species comfortably. However, with higher birthrates more individuals are being born and will need to compete against each other for a mutual pool of resources (money, food, shelter, education & attention). Principles of economics state that individuals are constantly competing for a limited supply of resources. With limited resources to meet a wide range of human needs, this overall leads to lower happiness scores for regions with higher birthrates.
+<div style="page-break-after: always;"></div>
+ > Birthrate by region
+
+```{r}
+Birthrate_by_region <- ggplot(Tidy_Health) + geom_point(aes(`Births/1,000 Population`,`Happiness score`))+ facet_wrap(~Region)
+
+Birthrate_by_region
+```
+
+This graph, reinforces the trends we’ve identified for birthrates were overall unanimous among all continents except Europe. Their birthrates fell within the first quartile and a positive correlation existed. While individuals are constantly competing for limited resources, due to income inequality, Europe is likely to have enough resources to sustain their growing birthrates. In the case of Europe their growing birthrates would facilitate more social interaction, family time,  and allow for individuals to further meet their intrinsic love and belonging needs.
+
+This observation provides further insight to how different regions can potentially perceive happiness differently. In countries with more resources, natural survival needs have already been satisfied for the population. Therefore, a higher emphasis on factors that stimulate social, love and belonging needs would be perceived to be more important in their pursuits of happiness.
+
+<div style="page-break-after: always;"></div>
+Conclusion:
+===================================
+
+ - Economic: Once fundamental human needs are met, individuals have all the economic as well as physical resources needed to attain optimal happiness. 
+ 
+ - Political: Two fundamental psychological need for happiness are civil liberties and political freedom to instill within a person a sense of external security and protection.
+
+- Technology: Happiness has strong relation with technology from prespective of intenet. In all parts of the world, the higher the percentage of internet users in population of a country, the higher the happiness scores.
+
+- Education: Education has a strong postive relation with happiness, as total schooling life expectancy increases, happiness also increases, especially in region with low GINI index. for people in countries with high GINI index, they don't value education as much as people in low GIMI indx regions.
+
+- Health: From approximately 0-13, birthrates have a positive correlation with happiness scores. Within this distribution of the birthrates, developed regions such as Europe and North America lie. Beyond 13 onwards, there is a negative correlation and regions such as Africa lie at the end of this distribution. As more individuals are born, they must compete for a limited pool resources such as money, shelter, education which creates unhappiness. 
+
+- Health: Birthrates within the first quartile, and its positive correlations to happiness can help us better understand other regions’ perceptions of happiness. In countries with greater resources like Europe, factors that help satisfy love, belonging and social needs can carry greater importance in the pursuit of happiness.
+
+
+<div style="page-break-after: always;"></div>
+
+Reference
+===================================
+
+Barker, C. (2011, October 19). Participation: The Happiness Connection. Retrieved from:           https://www.publicdeliberation.net/cgi/viewcontent.cgi?article=1167&context=jpd
+ 
+Florida, R. (2015, December 21). Income Inequality Leads to Less Happy People. Retrieved from:    https://www.citylab.com/equity/2015/12/income-inequality-makes-people-unhappy/416268/
+ 
+Luy, M., Zannella, M., Wegner-Siegmundt, C., Minagawa, Y., Lutz, W., & Caselli, G. (2019, March 7). The impact of increasing education levels on rising life expectancy: a decomposition analysis for Italy, Denmark, and the USA. Retrieved from https://link.springer.com/article/10.1186/s41118-019-0055-0.
+ 
+Schupak, A. (2015, April 16). Does technology make people happier? Retrieved from https://www.cbsnews.com/news/does-technology-make-people-happier/.
+ 
+Why being online makes us happier – and why it doesn't. (n.d.). Retrieved from https://shop.projecthappiness.org/blogs/project-happiness/why-being-online-makes-us-happier-and-why-it-doesn-t.
+
+Weiner, E. (2009, October 8). Will Democracy Make You Happy? Retrieved from: https://foreignpolicy.com/2009/10/08/will-democracy-make-you-happy/
